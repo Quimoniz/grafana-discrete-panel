@@ -49,6 +49,8 @@ export class CanvasPanelCtrl extends MetricsPanelCtrl {
 
   // Typically you will override this
   onRender() {
+    console.log("refusing to do onRender()");
+    return;
     if (!this.context) {
       console.log('No context!');
       return;

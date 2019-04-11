@@ -4,10 +4,12 @@ export class PointInfo {
   val: string;
   start: number; // timestamp
   ms = 0; // elapsed time
+  end: number;
 
-  constructor(val: string, start: number) {
+  constructor(val: string, start: number, end: number) {
     this.val = val;
     this.start = start;
+    this.end = end;
   }
 }
 
@@ -35,12 +37,13 @@ export class DistinctPoints {
 
   // ts numeric ms,
   // val is the normalized value
-  add(ts: number, val: string) {
+  add(ts: number, val: string, end: number) {
     if (this.last == null) {
       this.last = {
         val: val,
         start: ts,
         ms: 0,
+        end: end,
       };
       this.changes.push(this.last);
     } else if (ts === this.last.start) {
@@ -66,6 +69,7 @@ export class DistinctPoints {
           val: val,
           start: ts,
           ms: 0,
+          end: end,
         };
         this.changes.push(this.last);
       }
@@ -96,6 +100,7 @@ export class DistinctPoints {
         val: this.last.val,
         start: until,
         ms: 0,
+        end: until + 1000,
       });
     }
 
