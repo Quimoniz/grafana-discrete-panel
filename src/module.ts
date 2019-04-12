@@ -658,11 +658,11 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
       if (this.isTimeline) {
         hover = this.data[j].changes[this.data[j].changes.length - 1];
         for (let i = this.data[j].changes.length - 1; i >= 0; i--) {
-          if (this.data[j].changes[i].start > this.mouse.position.ts
-          &&  this.data[j].changes[i].end <= this.mouse.position.ts) {
+          if (this.data[j].changes[i].start < this.mouse.position.ts
+          &&  this.data[j].changes[i].end >= this.mouse.position.ts) {
             hover = this.data[j].changes[i];
+            break;
           }
-
         }
         this.hoverPoint = hover;
 
@@ -726,11 +726,14 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
     }
 
     const pt = this.hoverPoint;
+    /*
     if (pt && pt.start) {
       const range = {from: moment.utc(pt.start), to: moment.utc(pt.start + pt.ms)};
       this.timeSrv.setTime(range);
       this.clear();
-    }
+    }*/
+    this.queryForChilds(pt);
+
   }
 
   onMouseSelectedRange(range, event) {
@@ -1261,6 +1264,65 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
       const xOffset = ctx.measureText(dateStr).width / 2;
       ctx.fillText(dateStr, xPos - xOffset, top + 10);
     }
+  }
+  queryForChilds(pt) {
+    const jobStr = pt.val;
+    let jobId = -1;
+    let jobstepId = -1;
+    if(-1 < jobStr.indexOf("."))
+    {
+      jobId = parseInt(jobStr.split(".")[0]);
+      jobstepId = parseInt(jobStr.split(".")[1]);
+    } else {
+      jobId = parseInt(jobStr);
+      jobstepId = 0;
+    }
+    console.log(jobId + "." + jobstepId);
+    this.doSqlQuery("SELECT execution_instance.pid,execution_instance.tid,mmap_filenames.filename FROM execution_instance INNER JOIN mmap_filenames ON mmap_filenames.fid=execution_instance.fid WHERE job_id=" + jobId + " AND jobstep_id=" + jobstepId, this.processQueryForChilds);
+  }
+  processQueryForChilds(myself, columnDesc, rowData)
+  {
+    //console.log(rowData)
+    const pName = rowData[2];
+    myself.ctx.fillStyle = "#ffffff";
+    myself.ctx.fillRect(this.mouse.position.x, this.mouse.position.y, myself.ctx.measureText(pName).width + 2, 25);
+    myself.ctx.fillStyle = "#000000";
+    myself.ctx.fillText(pName, this.mouse.position.x, this.mouse.position + 10);
+
+  }
+  doSqlQuery(querySql: String, callback: Function)
+  {
+    const grafanaOrgId = 1; //TODO: fetch this from Grafana
+    const req = new XMLHttpRequest();
+    req.open("POST", "/api/tsdb/query", true);
+    req.setRequestHeader("Accept", "application/json, text/plain, */*");
+    req.setRequestHeader("X-Grafana-Id", "" + grafanaOrgId);
+    req.setRequestHeader("Content-Type", "application/json;charset=utf-8");
+    let jsonObj = {
+      "from": "0",
+      "to": ("" + (new Date()).getTime()),
+      "queries": [
+        {
+          "refId": "A",
+          "intervalMs": 60000,
+          "maxDataPoints": 1776,
+          "datasourceId": grafanaOrgId,
+          "rawSql": querySql,
+          "format": "table"
+        }
+      ]
+    };
+    req.addEventListener("load", function(myself, callback) { return function(evt) {
+       var obj = JSON.parse(evt.target.response);
+       if ("results" in obj && "A" in obj.results && "tables" in obj.results.A && 0 < obj.results.A.tables.length) {
+          callback(myself, obj.results.A.tables[0].columns, obj.results.A.tables[0].rows);
+        } else {
+          console.log("Bad Format in JSON response");
+          console.log(evt.target.response);
+        }
+      }; }(this, callback) );
+
+    req.send(JSON.stringify(jsonObj));
   }
 }
 
