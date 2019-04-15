@@ -158,6 +158,7 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
   _colorsPaleteCash: any = null;
   _renderDimensions: any = {};
   _selectionMatrix: string[][] = [];
+  showChilds: any = null;
 
   /** @ngInject */
   constructor($scope, $injector, public annotationsSrv) {
@@ -230,6 +231,7 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
     this._renderLabels();
     this._renderAnnotations();
     this._renderSelection();
+    this._renderChilds();
     this._renderCrosshair();
 
     this.renderingCompleted();
@@ -732,7 +734,7 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
       this.timeSrv.setTime(range);
       this.clear();
     }*/
-    this.queryForChilds(pt);
+    this.queryForChilds({"point": pt, "evt": event});
 
   }
 
@@ -1265,8 +1267,104 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
       ctx.fillText(dateStr, xPos - xOffset, top + 10);
     }
   }
-  queryForChilds(pt) {
-    const jobStr = pt.val;
+  _renderChilds() {
+    if(!this.showChilds)
+    {
+      console.log("this.showChilds is not specified");
+      return;
+    } else {
+      console.log("rendering childs");
+    }
+    const ctx = this.context;
+
+    const locationPos = [0, 0];
+    locationPos[0] = this._renderDimensions.matrix[this.showChilds.i].positions[this.showChilds.j][0];
+    locationPos[1] = this._renderDimensions.matrix[this.showChilds.i].y + 30;
+    ctx.textAlign = 'left';
+    ctx.font = this.panel.textSize + 'px "Open Sans", Helvetica, Arial, sans-serif';
+
+    this._drawTextWithBackground(this.basename(this.showChilds.filename), locationPos[0], locationPos[1]);
+    if(this.showChilds.childs)
+    {
+      const drawStack = new Array();
+      const indexStack = new Array();
+      let indexDepth = 0;
+      let yOffset = locationPos[1];
+      const xOffsets = new Array();
+      indexStack[0] = 0;
+      xOffsets.push(new Array());
+      drawStack.push(new Array());
+      for(let i = 0; i < this.showChilds.childs.length; ++i)
+      {
+        drawStack[0].push(this.showChilds.childs[i]);
+      }
+      while(0 <= indexDepth)
+      {
+        let curElement;
+        if(0 < drawStack[indexDepth].length)
+        {
+          curElement = drawStack[indexDepth].shift();
+          let previousX = 0;
+          if(0 < xOffsets[indexDepth].length)
+          {
+            previousX += xOffsets[indexDepth][xOffsets[indexDepth].length - 1];
+          }
+          xOffsets[indexDepth].push(previousX + this._drawTextWithBackground(this.basename(curElement.filename), locationPos[0] + previousX, yOffset + 35 * (indexDepth + 1)));
+          indexStack[indexDepth]++;
+        }
+        if(curElement)
+        {
+          if(curElement.childs)
+          {
+            drawStack.push(new Array());
+            ++indexDepth;
+            if(indexStack.length < (indexDepth + 1))
+            {
+              indexStack.push(0);
+            }
+            if(xOffsets.length < (indexDepth + 1))
+            {
+              xOffsets.push([xOffsets[indexDepth - 1][indexStack[indexDepth - 1]]]);
+            }
+            for(let i = 0; i < curElement.childs.length; ++i)
+            {
+              drawStack[indexDepth].push(curElement.childs[i]);
+            }
+          }
+        } else
+        {
+          --indexDepth;
+          drawStack.pop();
+        }
+      }
+    }
+  }
+  _drawTextWithBackground(text, xPos, yPos)
+  {
+    this.context.fillStyle = "#ffffff";
+    const textMetrics = this.context.measureText(text);
+    this.context.fillRect(xPos, yPos, textMetrics.width + 8, Math.floor(this.panel.textSize * 1.1 + 8));
+    this.context.fillStyle = "#000000";
+    this.context.strokeStyle = "#000000";
+    this.context.setLineDash([]);
+    this.context.lineWidth = 2;
+    this.context.strokeRect(xPos, yPos, textMetrics.width + 8, Math.floor(this.panel.textSize * 1.1 + 8));
+    this.context.fillText(text, xPos + 4, yPos + Math.floor(this.panel.textSize / 2) + 4);
+    return textMetrics.width + 8;
+  }
+  basename(pathname)
+  {
+    const lastSlashPos = pathname.lastIndexOf("/");
+    if(-1 < lastSlashPos)
+    {
+      return pathname.substring(lastSlashPos + 1, pathname.length);
+    } else
+    {
+      return pathname;
+    }
+  }
+  queryForChilds(paramObj) {
+    const jobStr = paramObj.point.val;
     let jobId = -1;
     let jobstepId = -1;
     if(-1 < jobStr.indexOf("."))
@@ -1278,19 +1376,121 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
       jobstepId = 0;
     }
     console.log(jobId + "." + jobstepId);
-    this.doSqlQuery("SELECT execution_instance.pid,execution_instance.tid,mmap_filenames.filename FROM execution_instance INNER JOIN mmap_filenames ON mmap_filenames.fid=execution_instance.fid WHERE job_id=" + jobId + " AND jobstep_id=" + jobstepId, this.processQueryForChilds);
+    this.doSqlQuery("SELECT execution_instance.pid,execution_instance.tid,mmap_filenames.filename FROM execution_instance INNER JOIN mmap_filenames ON mmap_filenames.fid=execution_instance.fid WHERE job_id=" + jobId + " AND jobstep_id=" + jobstepId, this.processQueryForChilds, paramObj);
   }
-  processQueryForChilds(myself, columnDesc, rowData)
+  processQueryForChilds(myself, columnDesc, rowData, paramObj)
   {
     //console.log(rowData)
-    const pName = rowData[2];
-    myself.ctx.fillStyle = "#ffffff";
-    myself.ctx.fillRect(this.mouse.position.x, this.mouse.position.y, myself.ctx.measureText(pName).width + 2, 25);
-    myself.ctx.fillStyle = "#000000";
-    myself.ctx.fillText(pName, this.mouse.position.x, this.mouse.position + 10);
-
+    const locationIndex = [0, 0];
+    for(let i = 0; i < myself.data.length; ++i)
+    {
+      for(let j = 0; j < myself.data[i].changes.length; ++j)
+      {
+        if(myself.data[i].changes[j].val == paramObj.point.val)
+        {
+          locationIndex[0] = i;
+          locationIndex[1] = j;
+          break;
+        }
+      }
+    }
+    myself.showChilds = {
+      "i": locationIndex[0],
+      "j": locationIndex[1],
+      "pid": rowData[0][0],
+      "tid": rowData[0][1],
+      "filename": "" + rowData[0][2],
+      "childs": null,
+     };
+    myself._renderChilds();
+    myself.recursivelyQueryForChilds(rowData[0][0]);
   }
-  doSqlQuery(querySql: String, callback: Function)
+  recursivelyQueryForChilds(pid)
+  {
+    this.doSqlQuery("SELECT execution_instance.pid,execution_instance.tid,mmap_filenames.filename FROM execution_instance INNER JOIN mmap_filenames ON mmap_filenames.fid=execution_instance.fid WHERE ppid=" + pid, this.recursivelyProcessQueryForChilds, {"pid": pid});
+  }
+  locateParentPidLocation(pid)
+  {
+    if(this.showChilds)
+    {
+      if(this.showChilds.pid == pid)
+      {
+        return this.showChilds;
+      } else
+      {
+        for(let i = 0, curIterObj = this.showChilds.childs; (curIterObj && "length" in curIterObj && i < curIterObj.length); ++i)
+        {
+          if(pid == curIterObj[i].pid)
+          {
+            return curIterObj[i];
+          } else
+          {
+            const returnVal = this.recursivelyLocateParentPidLocation(pid, curIterObj[i]);
+            if (returnVal)
+            {
+              return returnVal;
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+  recursivelyLocateParentPidLocation(pid, subtree)
+  {
+    if(!subtree)
+    {
+      return null;
+    }
+    if(subtree.pid == pid)
+    {
+      return subtree;
+    } else
+    {
+      for(let i = 0; i < subtree.childs.length; ++i)
+      {
+        if(subtree.childs[i].pid == pid)
+        {
+          return subtree.childs[i];
+        } else
+        {
+          const returnVal = this.recursivelyLocateParentPidLocation(pid, subtree.childs[i]);
+          if(returnVal)
+          {
+            return returnVal;
+          }
+        }
+      }
+    }
+    return null;
+  }
+  recursivelyProcessQueryForChilds(myself, columnDesc, rowData, paramPid)
+  {
+    console.log("recursivelyProcessQueryForChilds");
+    console.log(rowData);
+    if(rowData && 0 < rowData.length)
+    {
+      const parentPidLocation = myself.locateParentPidLocation(paramPid.pid);
+      for(let i = 0; i < rowData.length; ++i)
+      {
+        const curPid = rowData[i][0];
+        const curTid = rowData[i][1];
+        const curFilename = rowData[i][2];
+
+        // enter above meta data at the correct location in the this.showChilds process tree
+        if (0 == i)
+        {
+          parentPidLocation.childs = new Array();
+        }
+        parentPidLocation.childs.push({"pid": curPid, "tid": curTid, "filename": curFilename, "childs": null});
+
+        // query for more childs
+        myself.doSqlQuery("SELECT execution_instance.pid,execution_instance.tid,mmap_filenames.filename FROM execution_instance INNER JOIN mmap_filenames ON mmap_filenames.fid=execution_instance.fid WHERE ppid=" + curPid, myself.recursivelyProcessQueryForChilds, {"pid": curPid});
+      }
+    }
+    console.log(myself.showChilds);
+  }
+  doSqlQuery(querySql: String, callback: Function, someObj: Object)
   {
     const grafanaOrgId = 1; //TODO: fetch this from Grafana
     const req = new XMLHttpRequest();
@@ -1312,15 +1512,15 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
         }
       ]
     };
-    req.addEventListener("load", function(myself, callback) { return function(evt) {
+    req.addEventListener("load", function(myself, callback, paramObj) { return function(evt) {
        var obj = JSON.parse(evt.target.response);
        if ("results" in obj && "A" in obj.results && "tables" in obj.results.A && 0 < obj.results.A.tables.length) {
-          callback(myself, obj.results.A.tables[0].columns, obj.results.A.tables[0].rows);
+          callback(myself, obj.results.A.tables[0].columns, obj.results.A.tables[0].rows, paramObj);
         } else {
           console.log("Bad Format in JSON response");
           console.log(evt.target.response);
         }
-      }; }(this, callback) );
+      }; }(this, callback, someObj) );
 
     req.send(JSON.stringify(jsonObj));
   }
