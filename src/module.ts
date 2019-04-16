@@ -1270,7 +1270,6 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
   _renderChilds() {
     if(!this.showChilds)
     {
-      console.log("this.showChilds is not specified");
       return;
     }
     const ctx = this.context;
@@ -1431,9 +1430,45 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
       "end": rowData[0][3],
       "filename": "" + rowData[0][4],
       "childs": null,
+      "subqueryProcessed": false
      };
-    myself._renderChilds();
+    setTimeout(function(selfReference) { return function() {selfReference.checkShowChildsLoaded();};}(myself), 150);
     myself.recursivelyQueryForChilds(rowData[0][0], myself.showChilds);
+  }
+  checkShowChildsLoaded()
+  {
+    if("object" == (typeof this))
+    {
+      if(this.recursivelyCheckShowChildsLoaded(this.showChilds))
+      {
+        this._renderChilds();
+      } else
+      {
+        setTimeout(function(selfReference) { return function() {selfReference.checkShowChildsLoaded();};}(this), 150);
+      }
+    } else
+    {
+      console.log("Can't check if childs have been loaded, \"this\" is not pointing to an object!");
+    }
+  }
+  recursivelyCheckShowChildsLoaded(parent)
+  {
+    if(!parent.subqueryProcessed)
+    {
+      return false;
+    }
+    let allFinished = true;
+    if(parent.childs)
+    {
+      for(let i = 0; i < parent.childs; ++i)
+      {
+        if(!this.recursivelyCheckShowChildsLoaded(parent.childs[i]))
+        {
+          return false;
+        }
+      }
+    }
+    return allFinished;
   }
   recursivelyQueryForChilds(pid, parent)
   {
@@ -1444,7 +1479,7 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
     //console.log("recursivelyProcessQueryForChilds");
     if(rowData && 0 < rowData.length)
     {
-      const parentPidLocation = paramPid.parent; //myself.locateParentPidLocation(paramPid.pid);
+      const parentPidLocation = paramPid.parent;
       for(let i = 0; i < rowData.length; ++i)
       {
         // enter the data at the correct location in the this.showChilds process tree
@@ -1458,13 +1493,15 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
           "start": rowData[i][2],
           "end": rowData[i][3],
           "filename": rowData[i][4],
-          "childs": null
+          "childs": null,
+          "subqueryProcessed": false
         });
 
         // query for more childs
         myself.doSqlQuery("SELECT execution_instance.pid,execution_instance.tid,execution_instance.start,execution_instance.end,mmap_filenames.filename FROM execution_instance INNER JOIN mmap_filenames ON mmap_filenames.fid=execution_instance.fid WHERE ppid=" + rowData[i][0], myself.recursivelyProcessQueryForChilds, {"pid": rowData[i][0], "parent": parentPidLocation.childs[parentPidLocation.childs.length - 1]});
       }
     }
+    paramPid.parent.subqueryProcessed = true;
     //console.log(myself.showChilds);
   }
   doSqlQuery(querySql: String, callback: Function, someObj: Object)
