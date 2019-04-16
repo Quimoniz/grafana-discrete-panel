@@ -1272,45 +1272,53 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
     {
       console.log("this.showChilds is not specified");
       return;
-    } else {
-      console.log("rendering childs");
     }
     const ctx = this.context;
 
-    const locationPos = [0, 0];
-    locationPos[0] = this._renderDimensions.matrix[this.showChilds.i].positions[this.showChilds.j][0];
-    locationPos[1] = this._renderDimensions.matrix[this.showChilds.i].y + 30;
+    const locationPos = [0, 0, 0, 0];
+    let drawDirection = 1;
+    try {
+      if((this.showChilds.i + 4) > this._renderDimensions.matrix.length)
+      {
+        drawDirection = -1;
+      }
+      locationPos[0] = this._renderDimensions.matrix[this.showChilds.i].positions[this.showChilds.j][0];
+      locationPos[1] = this._renderDimensions.matrix[this.showChilds.i].y + this.panel.rowHeight * drawDirection;
+      locationPos[2] = this._renderDimensions.matrix[this.showChilds.i].positions[this.showChilds.j][1];
+      locationPos[3] = this.panel.rowHeight;
+    } catch(exc)
+    {
+      return;
+    }
     ctx.textAlign = 'left';
-    ctx.font = this.panel.textSize + 'px "Open Sans", Helvetica, Arial, sans-serif';
 
-    this._drawTextWithBackground(this.basename(this.showChilds.filename), locationPos[0], locationPos[1]);
+    this._drawTextWithBackground(this.basename(this.showChilds.filename), locationPos);
     if(this.showChilds.childs)
     {
       const drawStack = new Array();
-      const indexStack = new Array();
       let indexDepth = 0;
       let yOffset = locationPos[1];
-      const xOffsets = new Array();
-      indexStack[0] = 0;
-      xOffsets.push(new Array());
       drawStack.push(new Array());
       for(let i = 0; i < this.showChilds.childs.length; ++i)
       {
         drawStack[0].push(this.showChilds.childs[i]);
       }
+      const canvasWidth = this.wrap.getBoundingClientRect().width;
+      const timeStretch = this.range.to - this.range.from;
+      const heightPerRow = this.panel.rowHeight;
       while(0 <= indexDepth)
       {
         let curElement;
         if(0 < drawStack[indexDepth].length)
         {
           curElement = drawStack[indexDepth].shift();
-          let previousX = 0;
-          if(0 < xOffsets[indexDepth].length)
+          if((curElement.end/1000000) > this.range.from
+          && (curElement.start/1000000) < this.range.to)
           {
-            previousX += xOffsets[indexDepth][xOffsets[indexDepth].length - 1];
+            const targetX = Math.floor((Math.max(this.range.from, curElement.start / 1000000) - this.range.from) * canvasWidth / timeStretch);
+            const targetWidth = Math.floor((Math.min(this.range.to, curElement.end / 1000000) - Math.max(this.range.from, curElement.start / 1000000)) * canvasWidth / timeStretch);
+            this._drawTextWithBackground(this.basename(curElement.filename), [targetX, yOffset + heightPerRow * (indexDepth + 1) * drawDirection, targetWidth, heightPerRow]);
           }
-          xOffsets[indexDepth].push(previousX + this._drawTextWithBackground(this.basename(curElement.filename), locationPos[0] + previousX, yOffset + 35 * (indexDepth + 1)));
-          indexStack[indexDepth]++;
         }
         if(curElement)
         {
@@ -1318,14 +1326,6 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
           {
             drawStack.push(new Array());
             ++indexDepth;
-            if(indexStack.length < (indexDepth + 1))
-            {
-              indexStack.push(0);
-            }
-            if(xOffsets.length < (indexDepth + 1))
-            {
-              xOffsets.push([xOffsets[indexDepth - 1][indexStack[indexDepth - 1]]]);
-            }
             for(let i = 0; i < curElement.childs.length; ++i)
             {
               drawStack[indexDepth].push(curElement.childs[i]);
@@ -1339,18 +1339,47 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
       }
     }
   }
-  _drawTextWithBackground(text, xPos, yPos)
+  _drawTextWithBackground(text, dimensions)
   {
+    //clipping so the font will not wrap outside of our clipping box
+    this.context.save();
+    this.context.beginPath();
+    this.context.moveTo(dimensions[0], dimensions[1]);
+    this.context.lineTo(dimensions[0] + dimensions[2], dimensions[1]);
+    this.context.lineTo(dimensions[0] + dimensions[2], dimensions[1] + dimensions[3]);
+    this.context.lineTo(dimensions[0], dimensions[1] + dimensions[3]);
+    this.context.closePath();
+    this.context.clip();
+
     this.context.fillStyle = "#ffffff";
-    const textMetrics = this.context.measureText(text);
-    this.context.fillRect(xPos, yPos, textMetrics.width + 8, Math.floor(this.panel.textSize * 1.1 + 8));
-    this.context.fillStyle = "#000000";
+    this.context.fillRect(dimensions[0], dimensions[1], dimensions[2], dimensions[3]);
+
     this.context.strokeStyle = "#000000";
+    this.context.fillStyle = "#000000";
     this.context.setLineDash([]);
     this.context.lineWidth = 2;
-    this.context.strokeRect(xPos, yPos, textMetrics.width + 8, Math.floor(this.panel.textSize * 1.1 + 8));
-    this.context.fillText(text, xPos + 4, yPos + Math.floor(this.panel.textSize / 2) + 4);
-    return textMetrics.width + 8;
+    this.context.strokeRect(dimensions[0] + 1, dimensions[1] + 1, dimensions[2] - 2, dimensions[3] - 2);
+
+    let actualFontSize = this.panel.textSize;
+    this.context.font = actualFontSize + 'px "Open Sans", Helvetica, Arial, sans-serif';
+    const textMetrics = this.context.measureText(text);
+
+    if(textMetrics.width > dimensions[2])
+    {
+      actualFontSize = actualFontSize / (textMetrics.width / dimensions[2]);
+      if(8 > actualFontSize)
+      {
+        actualFontSize = 8;
+      } else
+      {
+        actualFontSize = Math.round(actualFontSize * 10) / 10;
+      }
+      this.context.font = actualFontSize + 'px "Open Sans", Helvetica, Arial, sans-serif';
+    }
+    this.context.fillText(text, dimensions[0] + 4, dimensions[1] + Math.floor(actualFontSize / 2) + 4);
+
+    this.context.restore();
+    return dimensions[2];
   }
   basename(pathname)
   {
@@ -1375,8 +1404,7 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
       jobId = parseInt(jobStr);
       jobstepId = 0;
     }
-    console.log(jobId + "." + jobstepId);
-    this.doSqlQuery("SELECT execution_instance.pid,execution_instance.tid,mmap_filenames.filename FROM execution_instance INNER JOIN mmap_filenames ON mmap_filenames.fid=execution_instance.fid WHERE job_id=" + jobId + " AND jobstep_id=" + jobstepId, this.processQueryForChilds, paramObj);
+    this.doSqlQuery("SELECT execution_instance.pid,execution_instance.tid,execution_instance.start,execution_instance.end,mmap_filenames.filename FROM execution_instance INNER JOIN mmap_filenames ON mmap_filenames.fid=execution_instance.fid WHERE job_id=" + jobId + " AND jobstep_id=" + jobstepId, this.processQueryForChilds, paramObj);
   }
   processQueryForChilds(myself, columnDesc, rowData, paramObj)
   {
@@ -1399,96 +1427,45 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
       "j": locationIndex[1],
       "pid": rowData[0][0],
       "tid": rowData[0][1],
-      "filename": "" + rowData[0][2],
+      "start": rowData[0][2],
+      "end": rowData[0][3],
+      "filename": "" + rowData[0][4],
       "childs": null,
      };
     myself._renderChilds();
-    myself.recursivelyQueryForChilds(rowData[0][0]);
+    myself.recursivelyQueryForChilds(rowData[0][0], myself.showChilds);
   }
-  recursivelyQueryForChilds(pid)
+  recursivelyQueryForChilds(pid, parent)
   {
-    this.doSqlQuery("SELECT execution_instance.pid,execution_instance.tid,mmap_filenames.filename FROM execution_instance INNER JOIN mmap_filenames ON mmap_filenames.fid=execution_instance.fid WHERE ppid=" + pid, this.recursivelyProcessQueryForChilds, {"pid": pid});
-  }
-  locateParentPidLocation(pid)
-  {
-    if(this.showChilds)
-    {
-      if(this.showChilds.pid == pid)
-      {
-        return this.showChilds;
-      } else
-      {
-        for(let i = 0, curIterObj = this.showChilds.childs; (curIterObj && "length" in curIterObj && i < curIterObj.length); ++i)
-        {
-          if(pid == curIterObj[i].pid)
-          {
-            return curIterObj[i];
-          } else
-          {
-            const returnVal = this.recursivelyLocateParentPidLocation(pid, curIterObj[i]);
-            if (returnVal)
-            {
-              return returnVal;
-            }
-          }
-        }
-      }
-    }
-    return null;
-  }
-  recursivelyLocateParentPidLocation(pid, subtree)
-  {
-    if(!subtree)
-    {
-      return null;
-    }
-    if(subtree.pid == pid)
-    {
-      return subtree;
-    } else
-    {
-      for(let i = 0; i < subtree.childs.length; ++i)
-      {
-        if(subtree.childs[i].pid == pid)
-        {
-          return subtree.childs[i];
-        } else
-        {
-          const returnVal = this.recursivelyLocateParentPidLocation(pid, subtree.childs[i]);
-          if(returnVal)
-          {
-            return returnVal;
-          }
-        }
-      }
-    }
-    return null;
+    this.doSqlQuery("SELECT execution_instance.pid,execution_instance.tid,execution_instance.start,execution_instance.end,mmap_filenames.filename FROM execution_instance INNER JOIN mmap_filenames ON mmap_filenames.fid=execution_instance.fid WHERE ppid=" + pid, this.recursivelyProcessQueryForChilds, {"pid": pid, "parent": parent});
   }
   recursivelyProcessQueryForChilds(myself, columnDesc, rowData, paramPid)
   {
-    console.log("recursivelyProcessQueryForChilds");
-    console.log(rowData);
+    //console.log("recursivelyProcessQueryForChilds");
     if(rowData && 0 < rowData.length)
     {
-      const parentPidLocation = myself.locateParentPidLocation(paramPid.pid);
+      const parentPidLocation = paramPid.parent; //myself.locateParentPidLocation(paramPid.pid);
       for(let i = 0; i < rowData.length; ++i)
       {
-        const curPid = rowData[i][0];
-        const curTid = rowData[i][1];
-        const curFilename = rowData[i][2];
-
-        // enter above meta data at the correct location in the this.showChilds process tree
+        // enter the data at the correct location in the this.showChilds process tree
         if (0 == i)
         {
           parentPidLocation.childs = new Array();
         }
-        parentPidLocation.childs.push({"pid": curPid, "tid": curTid, "filename": curFilename, "childs": null});
+        parentPidLocation.childs.push({
+          "pid": rowData[i][0],
+          "tid": rowData[i][1],
+          "start": rowData[i][2],
+          "end": rowData[i][3],
+          "filename": rowData[i][4],
+          "childs": null
+        });
 
         // query for more childs
-        myself.doSqlQuery("SELECT execution_instance.pid,execution_instance.tid,mmap_filenames.filename FROM execution_instance INNER JOIN mmap_filenames ON mmap_filenames.fid=execution_instance.fid WHERE ppid=" + curPid, myself.recursivelyProcessQueryForChilds, {"pid": curPid});
+        myself.doSqlQuery("SELECT execution_instance.pid,execution_instance.tid,execution_instance.start,execution_instance.end,mmap_filenames.filename FROM execution_instance INNER JOIN mmap_filenames ON mmap_filenames.fid=execution_instance.fid WHERE ppid=" + rowData[i][0], myself.recursivelyProcessQueryForChilds, {"pid": rowData[i][0], "parent": parentPidLocation.childs[parentPidLocation.childs.length - 1]});
       }
     }
-    console.log(myself.showChilds);
+    //console.log(myself.showChilds);
   }
   doSqlQuery(querySql: String, callback: Function, someObj: Object)
   {
