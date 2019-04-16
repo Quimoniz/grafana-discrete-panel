@@ -82,6 +82,7 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
     colorMaps: [{text: 'N/A', color: '#CCC'}],
     metricNameColor: '#000000',
     valueTextColor: '#000000',
+    lastValueColor: '#000000',
     timeTextColor: '#d8d9da',
     crosshairColor: '#8F070C',
     backgroundColor: 'rgba(128,128,128,0.1)',
@@ -994,7 +995,13 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
 
       if (this.panel.writeLastValue) {
         const val = this._getVal(i, positions.length - 1);
-        ctx.fillStyle = this.panel.valueTextColor;
+        if(this.panel.lastValueColor)
+        {
+          ctx.fillStyle = this.panel.lastValueColor;
+        } else
+        {
+          ctx.fillStyle = this.panel.valueTextColor;
+        }
         ctx.textAlign = 'right';
         const txtinfo = ctx.measureText(val);
         const xval = this._renderDimensions.width - offset - txtinfo.width;

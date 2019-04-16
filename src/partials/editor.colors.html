@@ -21,7 +21,15 @@
                 <spectrum-picker ng-model="ctrl.panel.valueTextColor" ng-change="ctrl.updateColorInfo()" ></spectrum-picker>
             </span>
         </div>
-
+        <div class="gf-form">
+            <span class="gf-form-label width-10">
+              Last Value Color
+            </span>
+            <input type="text" placeholder="text" ng-model="ctrl.panel.lastValueColor" class="gf-form-input width-13" ng-blur="ctrl.updateColorInfo()">
+            <span class="gf-form-label">
+              <spectrum-picker ng-model="ctrl.panel.lastValueColor" ng-change="ctrl.updateColorInfo()"></spectrum-picker>
+            </span>
+        </div>
         <div class="gf-form">
             <span class="gf-form-label width-10">
                 Time Text
