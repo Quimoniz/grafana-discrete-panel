@@ -91,6 +91,7 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
     textSizeTime: 12,
     extendLastValue: true,
     writeLastValue: true,
+    formatMetricsProcessMonitor: false,
     writeAllValues: false,
     writeMetricNames: false,
     showTimeAxis: true,
@@ -160,6 +161,7 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
   _renderDimensions: any = {};
   _selectionMatrix: string[][] = [];
   showChilds: any = null;
+  
 
   /** @ngInject */
   constructor($scope, $injector, public annotationsSrv) {
@@ -303,6 +305,18 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
 
     if (isNull) {
       return 'null';
+    }
+    if(this.panel.formatMetricsProcessMonitor)
+    {
+      if(-1 < val.indexOf("."))
+      {
+        if(-1 < val.lastIndexOf(".4294967294"))
+        {
+          val = val.substring(0, val.indexOf("."));
+        }
+      } else {
+        val = val + ".0";
+      }
     }
     return val;
   }
@@ -1408,9 +1422,15 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
       jobstepId = parseInt(jobStr.split(".")[1]);
     } else {
       jobId = parseInt(jobStr);
-      jobstepId = 0;
+      if(this.panel.formatMetricsProcessMonitor)
+      {
+        jobstepId = 4294967294;
+      } else
+      {
+        jobstepId = 0;
+      }
     }
-    this.doSqlQuery("SELECT execution_instance.pid,execution_instance.tid,execution_instance.start,execution_instance.end,mmap_filenames.filename FROM execution_instance INNER JOIN mmap_filenames ON mmap_filenames.fid=execution_instance.fid WHERE job_id=" + jobId + " AND jobstep_id=" + jobstepId, this.processQueryForChilds, paramObj);
+    this.doSqlQuery("SELECT execution_instance.pid,execution_instance.tid,execution_instance.ppid,execution_instance.ptid,execution_instance.start,execution_instance.end,mmap_filenames.filename,execution_instance.boottime,execution_instance.hostname FROM execution_instance INNER JOIN mmap_filenames ON mmap_filenames.fid=execution_instance.fid WHERE job_id=" + jobId + " AND jobstep_id=" + jobstepId, this.processQueryForChilds, paramObj);
   }
   processQueryForChilds(myself, columnDesc, rowData, paramObj)
   {
@@ -1433,9 +1453,11 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
       "j": locationIndex[1],
       "pid": rowData[0][0],
       "tid": rowData[0][1],
-      "start": rowData[0][2],
-      "end": rowData[0][3],
-      "filename": "" + rowData[0][4],
+      "ppid": rowData[0][2],
+      "ptid": rowData[0][3],
+      "start": rowData[0][4],
+      "end": rowData[0][5],
+      "filename": "" + rowData[0][6],
       "childs": null,
       "subqueryProcessed": false
      };
@@ -1479,7 +1501,7 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
   }
   recursivelyQueryForChilds(pid, parent)
   {
-    this.doSqlQuery("SELECT execution_instance.pid,execution_instance.tid,execution_instance.start,execution_instance.end,mmap_filenames.filename FROM execution_instance INNER JOIN mmap_filenames ON mmap_filenames.fid=execution_instance.fid WHERE ppid=" + pid, this.recursivelyProcessQueryForChilds, {"pid": pid, "parent": parent});
+    this.doSqlQuery("SELECT execution_instance.pid,execution_instance.tid,execution_instance.ppid,execution_instance.ptid,execution_instance.start,execution_instance.end,mmap_filenames.filename,execution_instance.boottime,execution_instance.hostname FROM execution_instance INNER JOIN mmap_filenames ON mmap_filenames.fid=execution_instance.fid WHERE ppid=" + pid, this.recursivelyProcessQueryForChilds, {"pid": pid, "parent": parent});
   }
   recursivelyProcessQueryForChilds(myself, columnDesc, rowData, paramPid)
   {
@@ -1497,15 +1519,20 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
         parentPidLocation.childs.push({
           "pid": rowData[i][0],
           "tid": rowData[i][1],
-          "start": rowData[i][2],
-          "end": rowData[i][3],
-          "filename": rowData[i][4],
+          "ppid": rowData[i][2],
+          "ptid": rowData[i][3],
+          "start": rowData[i][4],
+          "end": rowData[i][5],
+          "filename": rowData[i][6],
           "childs": null,
           "subqueryProcessed": false
         });
 
-        // query for more childs
-        myself.doSqlQuery("SELECT execution_instance.pid,execution_instance.tid,execution_instance.start,execution_instance.end,mmap_filenames.filename FROM execution_instance INNER JOIN mmap_filenames ON mmap_filenames.fid=execution_instance.fid WHERE ppid=" + rowData[i][0], myself.recursivelyProcessQueryForChilds, {"pid": rowData[i][0], "parent": parentPidLocation.childs[parentPidLocation.childs.length - 1]});
+        // query for more childs, only if pid != ppid
+        if(rowData[i][0] != rowData[i][2])
+        {
+          myself.doSqlQuery("SELECT execution_instance.pid,execution_instance.tid,execution_instance.ppid,execution_instance.ptid,execution_instance.start,execution_instance.end,mmap_filenames.filename,execution_instance.boottime,execution_instance.hostname FROM execution_instance INNER JOIN mmap_filenames ON mmap_filenames.fid=execution_instance.fid WHERE ppid=" + rowData[i][0] + "AND boottime=" + rowData[i][7] + " AND hostname=\"" + rowData[i][8] + "\"", myself.recursivelyProcessQueryForChilds, {"pid": rowData[i][0], "parent": parentPidLocation.childs[parentPidLocation.childs.length - 1]});
+        }
       }
     }
     paramPid.parent.subqueryProcessed = true;
