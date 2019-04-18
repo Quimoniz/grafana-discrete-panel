@@ -161,7 +161,14 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
   _renderDimensions: any = {};
   _selectionMatrix: string[][] = [];
   showChilds: any = null;
-  
+  childsHitbox: any = {
+    leftX: 0,
+    rightX: 0,
+    topY: 0,
+    bottomY: 0,
+    empty: true,
+    childs: new Array(),
+  };
 
   /** @ngInject */
   constructor($scope, $injector, public annotationsSrv) {
@@ -620,16 +627,46 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
     let to = point.end;
     let time = point.ms;
     let val = point.val;
+    let additionalInfo = null;
 
     if (this.mouse.down != null) {
       from = Math.min(this.mouse.down.ts, this.mouse.position.ts);
       to = Math.max(this.mouse.down.ts, this.mouse.position.ts);
       time = to - from;
       val = 'Zoom To:';
+    } else
+    {
+      if(this.showChilds)
+      {
+        if(this.childsHitbox.leftX < this.mouse.position.x
+        && this.childsHitbox.rightX > this.mouse.position.x
+        && this.childsHitbox.topY < this.mouse.position.y
+        && this.childsHitbox.bottomY > this.mouse.position.y)
+        {
+          for(let i = this.childsHitbox.childs.length - 1; i >= 0; --i)
+          {
+            if(this.childsHitbox.childs[i].leftX < this.mouse.position.x
+            && this.childsHitbox.childs[i].rightX > this.mouse.position.x
+            && this.childsHitbox.childs[i].topY < this.mouse.position.y
+            && this.childsHitbox.childs[i].bottomY > this.mouse.position.y)
+            {
+              const curRef = this.childsHitbox.childs[i].ref;
+              val = curRef.filename;
+              additionalInfo = "PID: " + curRef.pid + "<br/>"
+                             + "TID: " + curRef.tid + "<br/>";
+              break;
+            }
+          }
+        }
+      }
     }
 
     let body = '<div class="graph-tooltip-time">' + val + '</div>';
 
+    if(additionalInfo)
+    {
+      body += additionalInfo;
+    }
     body += '<center>';
     body += this.dashboard.formatDate(moment(from)) + '<br/>';
     body += 'to<br/>';
@@ -1313,6 +1350,8 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
     ctx.textAlign = 'left';
 
     this._drawTextWithBackground(this.basename(this.showChilds.filename), locationPos);
+    this._resetChildsHitbox();
+    this._updateChildsHitbox(this.showChilds, locationPos);
     if(this.showChilds.childs)
     {
       const drawStack = new Array();
@@ -1337,7 +1376,9 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
           {
             const targetX = Math.floor((Math.max(this.range.from, curElement.start / 1000000) - this.range.from) * canvasWidth / timeStretch);
             const targetWidth = Math.floor((Math.min(this.range.to, curElement.end / 1000000) - Math.max(this.range.from, curElement.start / 1000000)) * canvasWidth / timeStretch);
-            this._drawTextWithBackground(this.basename(curElement.filename), [targetX, yOffset + heightPerRow * (indexDepth + 1) * drawDirection, targetWidth, heightPerRow]);
+            const curLocation = [targetX, yOffset + heightPerRow * (indexDepth + 1) * drawDirection, targetWidth, heightPerRow];
+            this._drawTextWithBackground(this.basename(curElement.filename), curLocation);
+            this._updateChildsHitbox(curElement, curLocation);
           }
         }
         if(curElement)
@@ -1358,6 +1399,45 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
         }
       }
     }
+  }
+  _resetChildsHitbox()
+  {
+    this.childsHitbox = {
+      leftX: 0,
+      rightX: 0,
+      topY: 0,
+      bottomY: 0,
+      empty: true,
+      childs: new Array(),
+    };
+  }
+  _updateChildsHitbox(eleReference, curLocation)
+  {
+    const rightmostX = curLocation[0] + curLocation[2];
+    const bottommostY = curLocation[1] + curLocation[3];
+    if(this.childsHitbox.empty)
+    {
+      this.childsHitbox.empty = false;
+      this.childsHitbox.leftX = curLocation[0];
+      this.childsHitbox.rightX = rightmostX;
+      this.childsHitbox.topY = curLocation[1];
+      this.childsHitbox.bottomY = bottommostY;
+    } else
+    {
+      this.childsHitbox.leftX = Math.min(this.childsHitbox.leftX, curLocation[0]);
+      this.childsHitbox.rightX = Math.max(this.childsHitbox.rightX, rightmostX);
+      this.childsHitbox.topY = Math.min(this.childsHitbox.topY, curLocation[1]);
+      this.childsHitbox.bottomY = Math.max(this.childsHitbox.bottomY, bottommostY);
+    }
+    this.childsHitbox.childs.push(
+      {
+        leftX: curLocation[0],
+        rightX: rightmostX,
+        topY: curLocation[1],
+        bottomY: bottommostY,
+        ref: eleReference,
+      }
+    );
   }
   _drawTextWithBackground(text, dimensions)
   {
@@ -1531,7 +1611,7 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
         // query for more childs, only if pid != ppid
         if(rowData[i][0] != rowData[i][2])
         {
-          myself.doSqlQuery("SELECT execution_instance.pid,execution_instance.tid,execution_instance.ppid,execution_instance.ptid,execution_instance.start,execution_instance.end,mmap_filenames.filename,execution_instance.boottime,execution_instance.hostname FROM execution_instance INNER JOIN mmap_filenames ON mmap_filenames.fid=execution_instance.fid WHERE ppid=" + rowData[i][0] + "AND boottime=" + rowData[i][7] + " AND hostname=\"" + rowData[i][8] + "\"", myself.recursivelyProcessQueryForChilds, {"pid": rowData[i][0], "parent": parentPidLocation.childs[parentPidLocation.childs.length - 1]});
+          myself.doSqlQuery("SELECT execution_instance.pid,execution_instance.tid,execution_instance.ppid,execution_instance.ptid,execution_instance.start,execution_instance.end,mmap_filenames.filename,execution_instance.boottime,execution_instance.hostname FROM execution_instance INNER JOIN mmap_filenames ON mmap_filenames.fid=execution_instance.fid WHERE ppid=" + rowData[i][0] + " AND boottime=" + rowData[i][7] + " AND hostname='" + rowData[i][8] + "'", myself.recursivelyProcessQueryForChilds, {"pid": rowData[i][0], "parent": parentPidLocation.childs[parentPidLocation.childs.length - 1]});
         }
       }
     }
@@ -1561,12 +1641,28 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
       ]
     };
     req.addEventListener("load", function(myself, callback, paramObj) { return function(evt) {
-       var obj = JSON.parse(evt.target.response);
-       if ("results" in obj && "A" in obj.results && "tables" in obj.results.A && 0 < obj.results.A.tables.length) {
+       var obj = null;
+       try{
+         obj = JSON.parse(evt.target.response);
+       } catch(exc)
+       {
+         console.log("Could not parse the following response to JSON:" + evt.target.response);
+         return;
+       }
+       if (obj && "results" in obj && "A" in obj.results && "tables" in obj.results.A && obj.results.A.tables && "length" in obj.results.A.tables && 0 < obj.results.A.tables.length) {
           callback(myself, obj.results.A.tables[0].columns, obj.results.A.tables[0].rows, paramObj);
         } else {
-          console.log("Bad Format in JSON response");
-          console.log(evt.target.response);
+          if(obj && obj.results && obj.results.A && obj.results.A.error)
+          {
+            console.log("SQL error:");
+            console.log(obj.results.A.error);
+            console.log("In this query:");
+            console.log(obj.results.A.meta.sql);
+          } else
+          {
+            console.log("Bad Format in JSON response");
+            console.log(evt.target.response);
+          }
         }
       }; }(this, callback, someObj) );
 
