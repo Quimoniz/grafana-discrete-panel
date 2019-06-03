@@ -1510,7 +1510,7 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
         jobstepId = 0;
       }
     }
-    this.doSqlQuery("SELECT execution_instance.pid,execution_instance.tid,execution_instance.ppid,execution_instance.ptid,execution_instance.start,execution_instance.end,mmap_filenames.filename,execution_instance.boottime,execution_instance.hostname FROM execution_instance INNER JOIN mmap_filenames ON mmap_filenames.fid=execution_instance.fid WHERE job_id=" + jobId + " AND jobstep_id=" + jobstepId, this.processQueryForChilds, paramObj);
+    this.doSqlQuery("SELECT execution_instance.pid,execution_instance.tid,execution_instance.ppid,execution_instance.ptid,execution_instance.start,execution_instance.end,mmap_filenames.filename,execution_instance.xid_boot FROM execution_instance INNER JOIN mmap_filenames ON mmap_filenames.fid=execution_instance.fid LEFT JOIN `jobinfo` ON `execution_instance`.`pid`=`jobinfo`.`pid` AND `execution_instance`.`xid_boot`=`jobinfo`.`xid_boot` WHERE job_id=" + jobId + " AND jobstep_id=" + jobstepId, this.processQueryForChilds, paramObj);
   }
   processQueryForChilds(myself, columnDesc, rowData, paramObj)
   {
@@ -1538,11 +1538,12 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
       "start": rowData[0][4],
       "end": rowData[0][5],
       "filename": "" + rowData[0][6],
+      "xid_boot": rowData[0][7],
       "childs": null,
       "subqueryProcessed": false
      };
     setTimeout(function(selfReference) { return function() {selfReference.checkShowChildsLoaded();};}(myself), 150);
-    myself.recursivelyQueryForChilds(rowData[0][0], myself.showChilds);
+    myself.recursivelyQueryForChilds(rowData[0][0], rowData[0][7], myself.showChilds);
   }
   checkShowChildsLoaded()
   {
@@ -1579,9 +1580,9 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
     }
     return allFinished;
   }
-  recursivelyQueryForChilds(pid, parent)
+  recursivelyQueryForChilds(pid, xid_boot, parent)
   {
-    this.doSqlQuery("SELECT execution_instance.pid,execution_instance.tid,execution_instance.ppid,execution_instance.ptid,execution_instance.start,execution_instance.end,mmap_filenames.filename,execution_instance.boottime,execution_instance.hostname FROM execution_instance INNER JOIN mmap_filenames ON mmap_filenames.fid=execution_instance.fid WHERE ppid=" + pid, this.recursivelyProcessQueryForChilds, {"pid": pid, "parent": parent});
+    this.doSqlQuery("SELECT execution_instance.pid,execution_instance.tid,execution_instance.ppid,execution_instance.ptid,execution_instance.start,execution_instance.end,mmap_filenames.filename,execution_instance.xid_boot FROM execution_instance INNER JOIN mmap_filenames ON mmap_filenames.fid=execution_instance.fid WHERE xid_boot=" + xid_boot + " AND ppid=" + pid, this.recursivelyProcessQueryForChilds, {"pid": pid, "xid_boot": xid_boot, "parent": parent});
   }
   recursivelyProcessQueryForChilds(myself, columnDesc, rowData, paramPid)
   {
@@ -1604,6 +1605,7 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
           "start": rowData[i][4],
           "end": rowData[i][5],
           "filename": rowData[i][6],
+          "xid_boot": rowData[i][7],
           "childs": null,
           "subqueryProcessed": false
         });
@@ -1611,7 +1613,7 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
         // query for more childs, only if pid != ppid
         if(rowData[i][0] != rowData[i][2])
         {
-          myself.doSqlQuery("SELECT execution_instance.pid,execution_instance.tid,execution_instance.ppid,execution_instance.ptid,execution_instance.start,execution_instance.end,mmap_filenames.filename,execution_instance.boottime,execution_instance.hostname FROM execution_instance INNER JOIN mmap_filenames ON mmap_filenames.fid=execution_instance.fid WHERE ppid=" + rowData[i][0] + " AND boottime=" + rowData[i][7] + " AND hostname='" + rowData[i][8] + "'", myself.recursivelyProcessQueryForChilds, {"pid": rowData[i][0], "parent": parentPidLocation.childs[parentPidLocation.childs.length - 1]});
+          myself.doSqlQuery("SELECT execution_instance.pid,execution_instance.tid,execution_instance.ppid,execution_instance.ptid,execution_instance.start,execution_instance.end,mmap_filenames.filename,execution_instance.xid_boot FROM execution_instance INNER JOIN mmap_filenames ON mmap_filenames.fid=execution_instance.fid WHERE ppid=" + rowData[i][0] + " AND xid_boot=" + rowData[i][7], myself.recursivelyProcessQueryForChilds, {"pid": rowData[i][0], "xid_boot": rowData[i][7], "parent": parentPidLocation.childs[parentPidLocation.childs.length - 1]});
         }
       }
     }
