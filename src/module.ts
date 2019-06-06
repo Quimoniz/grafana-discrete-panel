@@ -91,7 +91,7 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
     textSizeTime: 12,
     extendLastValue: true,
     writeLastValue: true,
-    formatMetricsProcessMonitor: false,
+    formatMetricsProcessMonitor: true,
     writeAllValues: false,
     writeMetricNames: false,
     showTimeAxis: true,
@@ -285,8 +285,11 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
       }
 
       // Convert it to a string first
-      if (this.formatter) {
+      if (!this.panel.formatMetricsProcessMonitor && this.formatter) {
         val = this.formatter(val, this.panel.decimals);
+      } else
+      {
+        val = "" + val;
       }
     }
 
@@ -313,6 +316,7 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
     if (isNull) {
       return 'null';
     }
+
     if(this.panel.formatMetricsProcessMonitor)
     {
       if(-1 < val.indexOf("."))
@@ -325,6 +329,7 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
         val = val + ".0";
       }
     }
+
     return val;
   }
 
@@ -385,10 +390,11 @@ class DiscretePanelCtrl extends CanvasPanelCtrl {
         }
       }
     });
+
     if ( 'table' !== dataList[0].type
     && 1 < dataList.length
-    && dataList[0].target.match(/ value$/)
-    && dataList[1].target.match(/ end$/))
+    && dataList[0].target.match(/ value$/i)
+    && dataList[1].target.match(/ end$/i))
       {
         for(let j = 0; j < dataList.length; j+=2)
         {
